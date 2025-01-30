@@ -1,0 +1,9 @@
+.DS_Store
+
+.idea
+venv
+data
+
+.gitignore
+insert_data_to_db.ipynb
+Dockerfile
