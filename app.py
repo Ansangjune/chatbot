@@ -1,41 +1,45 @@
-import os
-from dotenv import load_dotenv
+import time
+import requests
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_openai import ChatOpenAI
-from pinecone import Pinecone
-from langchain import vectorstores
-from langchain.embeddings.openai import OpenAIEmbeddings
-
-load_dotenv()
-
-embed_model = OpenAIEmbeddings(model="text-embedding-ada-002")
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index("the-democraticparty")
-vectorstore = vectorstores.Pinecone(index, embed_model.embed_query, "text")
-chat = ChatOpenAI(api_key=os.getenv("OPENAI_API_KEY"), model='gpt-3.5-turbo', streaming=True)
 
 st.set_page_config(page_title="Streaming bot", page_icon="🤖")
 st.title("Streaming bot")
 
-def augment_prompt(query: str):
-    results = vectorstore.similarity_search(query, k=3)
-    source_knowledge = "\n".join([x.page_content for x in results])
-    augmented_prompt = f"""Using the contexts below, answer the query in korean.
-    Contexts:
-    {source_knowledge}
-    Query: {query}"""
-    return augmented_prompt
+
+def send_chat_completion(query: str) -> dict:
+    url = "http://localhost:8000/v1/chat/completions"
+    headers = {
+        "accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "string",
+        "messages": [
+            {
+                "role": "client",
+                "content": query  # **여기에 입력받은 값이 들어갑니다**
+            }
+        ],
+        "temperature": 0
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return {"error": response.status_code, "message": response.text}
+
 
 def get_response(user_query, chat_history):
-    prompt = HumanMessage(content=augment_prompt(user_query))
-    ai_history = chat_history[:-1] + [prompt]
-    stream = chat.invoke(ai_history)
-    for chunk in stream:
-        if chunk[0] == "content":
-            yield chunk[1]
+    stream = send_chat_completion(user_query)
+    content = stream["choices"][0]["message"]["content"]
+    for word in content.split(" "):
+        yield word + " "
+        time.sleep(0.02)
 
-# session state
+    # session state
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [AIMessage(content="안녕 나는 Chatbot이야 무엇을 도와줄까?")]
 
